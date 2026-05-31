@@ -342,16 +342,20 @@ function histTransaction(history: HistoryState, state: EditorState, redo: boolea
   return pop.transform.setSelection(selection).setMeta(historyKey, {redo, historyState: newHist})
 }
 
-let cachedPreserveItems = false, cachedPreserveItemsPlugins: readonly Plugin[] | null = null
+// BricksInc fork: hold the memoized plugins array weakly. Rich-editor plugins close over the
+// editor's reactive owner/context, so a strong module-level cache of the last EditorState's plugins
+// keeps that whole context (and, in Bricks, the file's datastore) alive long after the editor is
+// gone. A WeakRef preserves the memoization while letting the array be GC'd once unreferenced.
+let cachedPreserveItems = false, cachedPreserveItemsPlugins: WeakRef<readonly Plugin[]> | null = null
 // Check whether any plugin in the given state has a
 // `historyPreserveItems` property in its spec, in which case we must
 // preserve steps exactly as they came in, so that they can be
 // rebased.
 function mustPreserveItems(state: EditorState) {
   let plugins = state.plugins
-  if (cachedPreserveItemsPlugins != plugins) {
+  if (cachedPreserveItemsPlugins?.deref() != plugins) {
     cachedPreserveItems = false
-    cachedPreserveItemsPlugins = plugins
+    cachedPreserveItemsPlugins = new WeakRef(plugins)
     for (let i = 0; i < plugins.length; i++) if ((plugins[i].spec as any).historyPreserveItems) {
       cachedPreserveItems = true
       break
